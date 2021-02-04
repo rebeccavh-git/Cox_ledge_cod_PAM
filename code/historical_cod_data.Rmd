@@ -1,0 +1,162 @@
+---
+title: "historical_cod_data"
+author: "Becca Van Hoeck"
+date: "3/9/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading and concatenating text files
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(MASS)
+library(lunar)
+
+#setwd("C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated")
+setwd("C:/Users/Becca/Documents/MATLAB/mfiles/Cod/")
+```
+
+## Load Data
+
+```{r}
+# all detections:
+picked_calls = read.csv('picked_calls_all_12-08-20.csv', header = TRUE)
+picked_calls$DateTime = paste(picked_calls$BeginDate, picked_calls$BeginClockTime, sep = " ")
+picked_calls$DateTime = ymd_hms(picked_calls$DateTime, tz = "EST")
+
+cod = read.csv('cod_calls_Ch9_12-08-20.csv', header = TRUE)
+#det_time = ymd_hms(cod$det_time(1))
+
+# paste date and time into a single lubridate datetime
+cod$DateTime = paste(cod$BeginDate, cod$BeginClockTime, sep = " ") 
+cod$DateTime = ymd_hms(cod$DateTime, tz = "EST") 
+
+
+# # Set variables to date/times with lubridate
+# cod$Date = as_date(cod$BeginDate)
+# cod$Time = hms(cod$BeginClockTime)
+# cod$hour = hour(cod$Time)
+
+
+```
+
+## Load env data
+
+```{r}
+setwd("C:/Users/Becca/Documents/Grad_School/Research/Projects/Cox_Ledge_PAM/historical_data/buoy_44097_historical/")
+
+temp_2013 = read.csv("buoy_data_2013.csv", header = TRUE)
+temp_2014 = read.csv("buoy_data_2014.csv", header = TRUE)
+temp_2015 = read.csv("buoy_data_2015.csv", header = TRUE)
+temp_2019 = read.csv("buoy_data_2019.csv", header = TRUE)
+
+# pass vector of dates to lunar.phase to get the lunar phase in radians
+
+```
+
+## Seasonal Patterns
+
+```{r}
+gruntperday = cod %>% 
+  group_by(date = date(cod$DateTime)) %>%
+  summarise(n_grunts = n())
+
+ggplot(data = gruntperday, aes(x = date, y = n_grunts))+theme_bw()+
+  geom_col()+ xlab("Date")+ ylab("Number of Grunts")+
+  ggtitle("Atlantic Cod Spawning Season (2013 - 2014)")+
+  theme(axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        title = element_text(size = 14))
+
+```
+
+# Exploring daily patterns
+
+```{r}
+gruntperhr = cod %>%
+  group_by(Month = month(cod$DateTime), date = date(cod$DateTime), hour = hour(cod$DateTime)) %>%
+  summarise(n_grunts = n()) %>%
+  group_by(Month, hour) %>%
+  summarise(avg_hr = mean(n_grunts), stdev = sd(n_grunts))
+
+ggplot(data = gruntperhr, aes(x = hour, y = avg_hr))+ theme_bw()+
+  geom_col()+
+  geom_errorbar(aes(ymin = avg_hr, ymax = avg_hr+stdev, width = 0.2))+
+  facet_grid(cols = vars(Month))+
+  xlab("Hour of the the day")+ ylab("Average number of grunts per hour")+
+  ggtitle("Daily Patterns in Sound Production")+
+  theme(axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        title = element_text(size = 14))
+
+```
+
+# Assemble dataframe for model
+
+```{r}
+DateTime = seq(ymd_hm("2013-11-01 00:00"), ymd_hm("2013-12-31 23:00"), by = "hour")
+cod_data = as.data.frame(DateTime)
+
+# cod hourly grunt rate
+hourly_presence = cod %>%
+  group_by(Month = month(cod$DateTime), date = date(cod$DateTime), hour = hour(cod$DateTime)) %>%
+  summarise(n_grunts = n())
+hourly_presence$DateTime = ymd_h(paste(hourly_presence$date, hourly_presence$hour))
+
+# cod hourly grunt presence
+cod_data = left_join(cod_data,hourly_presence[,c(4,5)], by = "DateTime")
+cod_data$n_grunts[is.na(cod_data$n_grunts)] = 0
+cod_data$presence = cod_data$n_grunts
+cod_data$presence[cod_data$presence >= 1] = 1
+cod_data$presence[is.na(cod_data$presence)] = 0
+
+# Natural cycles
+cod_data$year = year(cod_data$DateTime)
+cod_data$month = month(cod_data$DateTime)
+cod_data$day = day(cod_data$DateTime)
+cod_data$hour = hour(cod_data$DateTime)
+
+# lunar data
+cod_data$lunarphase = lunar.phase(cod_data$DateTime)
+
+# temperature
+temp_2013$DateTime = ymd_h(paste(temp_2013$YY,temp_2013$MM, temp_2013$DD, temp_2013$hh))
+hour_temp13 = temp_2013 %>%
+  group_by(DateTime) %>%
+  summarize(avg_TempC = mean(WTMP_degC)) %>%
+  filter(DateTime > "2013-11-01" & DateTime < "2013-12-31")
+
+cod_data = left_join(cod_data,hour_temp13, by = "DateTime")
+  
+
+```
+
+# Model cod vocalization rate
+Build this off of Micah's analysis
+Actually, use a hurdle model to simultaneously model the binomial presence absence and the rate when present   
+
+```{r}
+library(pscl)
+
+#trim to bounds of spawning season
+cod_data = cod_data %>% 
+  filter(DateTime > "2013-11-17")
+
+cod_hurdle1 = hurdle(n_grunts ~ month + day + 
+                       sin(hour) + cos(hour) + 
+                       sin(lunarphase) + cos(lunarphase) + 
+                       month:sin(lunarphase) + month:cos(lunarphase),
+                     data = cod_data, dist = "poisson", zero.dist = "binomial")
+
+summary(cod_hurdle1)
+
+
+```
+
+
