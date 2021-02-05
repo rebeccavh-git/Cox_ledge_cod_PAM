@@ -19,18 +19,18 @@ library(MASS)
 library(lunar)
 
 #setwd("C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated")
-setwd("C:/Users/Becca/Documents/MATLAB/mfiles/Cod/")
+#setwd("C:/Users/Becca/Documents/MATLAB/mfiles/Cod/")
 ```
 
 ## Load Data
 
 ```{r}
 # all detections:
-picked_calls = read.csv('picked_calls_all_12-08-20.csv', header = TRUE)
+picked_calls = read.csv('data/picked_calls_all_12-08-20.csv', header = TRUE)
 picked_calls$DateTime = paste(picked_calls$BeginDate, picked_calls$BeginClockTime, sep = " ")
 picked_calls$DateTime = ymd_hms(picked_calls$DateTime, tz = "EST")
 
-cod = read.csv('cod_calls_Ch9_12-08-20.csv', header = TRUE)
+cod = read.csv('data/cod_calls_Ch9_12-08-20.csv', header = TRUE)
 #det_time = ymd_hms(cod$det_time(1))
 
 # paste date and time into a single lubridate datetime
