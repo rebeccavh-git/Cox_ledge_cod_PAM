@@ -17,20 +17,33 @@ library(dplyr)
 library(lubridate)
 library(MASS)
 library(lunar)
-
+library(tidyr)
 #setwd("C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated")
 #setwd("C:/Users/Becca/Documents/MATLAB/mfiles/Cod/")
+```
+
+## Test R code to load detections
+
+```{r}
+#sels_1308 = list.files(path = "C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated", 
+#            pattern = "^[Ch9_RVH]$")
+# 
+# sels_1308 = list.files(path = "C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated", 
+#            pattern = "[m]")
+
+
 ```
 
 ## Load Data
 
 ```{r}
 # all detections:
-picked_calls = read.csv('data/picked_calls_all_12-08-20.csv', header = TRUE)
-picked_calls$DateTime = paste(picked_calls$BeginDate, picked_calls$BeginClockTime, sep = " ")
-picked_calls$DateTime = ymd_hms(picked_calls$DateTime, tz = "EST")
+#picked_calls = read.csv('data/picked_calls_all_12-08-20.csv', header = TRUE)
+#picked_calls$DateTime = paste(picked_calls$BeginDate, picked_calls$BeginClockTime, sep = " ")
+#picked_calls$DateTime = ymd_hms(picked_calls$DateTime, tz = "EST")
 
-cod = read.csv('data/cod_calls_Ch9_12-08-20.csv', header = TRUE)
+cod = read.csv('data/cod_calls_03_21.csv', header = TRUE)
+#cod = read.csv('data/cod_calls_Ch9_12-08-20.csv', header = TRUE)
 #det_time = ymd_hms(cod$det_time(1))
 
 # paste date and time into a single lubridate datetime
@@ -49,12 +62,11 @@ cod$DateTime = ymd_hms(cod$DateTime, tz = "EST")
 ## Load env data
 
 ```{r}
-setwd("C:/Users/Becca/Documents/Grad_School/Research/Projects/Cox_Ledge_PAM/historical_data/buoy_44097_historical/")
 
-temp_2013 = read.csv("buoy_data_2013.csv", header = TRUE)
-temp_2014 = read.csv("buoy_data_2014.csv", header = TRUE)
-temp_2015 = read.csv("buoy_data_2015.csv", header = TRUE)
-temp_2019 = read.csv("buoy_data_2019.csv", header = TRUE)
+temp_2013 = read.csv("data/buoy_data_2013.csv", header = TRUE)
+temp_2014 = read.csv("data/buoy_data_2014.csv", header = TRUE)
+temp_2015 = read.csv("data/buoy_data_2015.csv", header = TRUE)
+temp_2019 = read.csv("data/buoy_data_2019.csv", header = TRUE)
 
 # pass vector of dates to lunar.phase to get the lunar phase in radians
 
@@ -80,15 +92,18 @@ ggplot(data = gruntperday, aes(x = date, y = n_grunts))+theme_bw()+
 
 ```{r}
 gruntperhr = cod %>%
-  group_by(Month = month(cod$DateTime), date = date(cod$DateTime), hour = hour(cod$DateTime)) %>%
+  group_by(year = year(cod$DateTime), Month = month(cod$DateTime), date = date(cod$DateTime), 
+           hour = hour(cod$DateTime)) %>%
   summarise(n_grunts = n()) %>%
-  group_by(Month, hour) %>%
+  group_by(year, Month, hour) %>%
   summarise(avg_hr = mean(n_grunts), stdev = sd(n_grunts))
 
-ggplot(data = gruntperhr, aes(x = hour, y = avg_hr))+ theme_bw()+
+gruntperhrfilt = gruntperhr[-c(1,2),]
+
+ggplot(data = gruntperhrfilt, aes(x = hour, y = avg_hr))+ theme_bw()+
   geom_col()+
   geom_errorbar(aes(ymin = avg_hr, ymax = avg_hr+stdev, width = 0.2))+
-  facet_grid(cols = vars(Month))+
+  facet_grid(rows = vars(year), cols = vars(Month))+
   xlab("Hour of the the day")+ ylab("Average number of grunts per hour")+
   ggtitle("Daily Patterns in Sound Production")+
   theme(axis.title = element_text(size = 14),
@@ -100,7 +115,7 @@ ggplot(data = gruntperhr, aes(x = hour, y = avg_hr))+ theme_bw()+
 # Assemble dataframe for model
 
 ```{r}
-DateTime = seq(ymd_hm("2013-11-01 00:00"), ymd_hm("2013-12-31 23:00"), by = "hour")
+DateTime = seq(ymd_hm("2013-11-01 00:00"), ymd_hm("2015-04-01 23:00"), by = "hour")
 cod_data = as.data.frame(DateTime)
 
 # cod hourly grunt rate
@@ -126,14 +141,32 @@ cod_data$hour = hour(cod_data$DateTime)
 cod_data$lunarphase = lunar.phase(cod_data$DateTime)
 
 # temperature
+#2013
 temp_2013$DateTime = ymd_h(paste(temp_2013$YY,temp_2013$MM, temp_2013$DD, temp_2013$hh))
 hour_temp13 = temp_2013 %>%
   group_by(DateTime) %>%
   summarize(avg_TempC = mean(WTMP_degC)) %>%
   filter(DateTime > "2013-11-01" & DateTime < "2013-12-31")
 
-cod_data = left_join(cod_data,hour_temp13, by = "DateTime")
-  
+#2014
+temp_2014$DateTime = ymd_h(paste(temp_2014$X.YY,temp_2014$MM, temp_2014$DD, temp_2014$hh))
+hour_temp14 = temp_2014 %>%
+  group_by(DateTime) %>%
+  summarize(avg_TempC = mean(WTMP_degC)) %>%
+  filter(DateTime > "2014-01-01" & DateTime < "2014-12-31")
+colnames(temp_2014) = c("YY","MM","DD","hh","mm","WVHT_m","DPD_sec","APD_sec" ,"MWD_degT","WTMP_degC","DateTime")
+
+#2015
+temp_2015$DateTime = ymd_h(paste(temp_2015$X.YY,temp_2015$MM, temp_2015$DD, temp_2015$hh))
+hour_temp15 = temp_2015 %>%
+  group_by(DateTime) %>%
+  summarize(avg_TempC = mean(WTMP_degC)) %>%
+  filter(DateTime > "2015-01-01" & DateTime < "2015-12-31")
+colnames(temp_2015) = c("YY","MM","DD","hh","mm","WVHT_m","DPD_sec","APD_sec" ,"MWD_degT","WTMP_degC","DateTime")
+
+temp = rbind(temp_2013,temp_2014,temp_2015)
+
+cod_data = left_join(cod_data, temp, by = "DateTime")
 
 ```
 
