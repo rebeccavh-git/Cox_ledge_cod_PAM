@@ -9,7 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Loading and concatenating text files
+## Loading packages
 
 ```{r}
 library(ggplot2)
@@ -18,8 +18,6 @@ library(lubridate)
 library(MASS)
 library(lunar)
 library(tidyr)
-#setwd("C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated")
-#setwd("C:/Users/Becca/Documents/MATLAB/mfiles/Cod/")
 ```
 
 ## Test R code to load detections
@@ -37,38 +35,22 @@ library(tidyr)
 ## Load Data
 
 ```{r}
-# all detections:
-#picked_calls = read.csv('data/picked_calls_all_12-08-20.csv', header = TRUE)
-#picked_calls$DateTime = paste(picked_calls$BeginDate, picked_calls$BeginClockTime, sep = " ")
-#picked_calls$DateTime = ymd_hms(picked_calls$DateTime, tz = "EST")
+cod = read.csv('data/cod_calls_04-5-21.csv', header = TRUE)
 
-cod = read.csv('data/cod_calls_03_21.csv', header = TRUE)
-#cod = read.csv('data/cod_calls_Ch9_12-08-20.csv', header = TRUE)
-#det_time = ymd_hms(cod$det_time(1))
+# remove any data not from channel 9
+cod[cod$Channel != 9,] = NA
+cod = na.omit(cod)
 
 # paste date and time into a single lubridate datetime
 cod$DateTime = paste(cod$BeginDate, cod$BeginClockTime, sep = " ") 
 cod$DateTime = ymd_hms(cod$DateTime, tz = "EST") 
 
-
-# # Set variables to date/times with lubridate
-# cod$Date = as_date(cod$BeginDate)
-# cod$Time = hms(cod$BeginClockTime)
-# cod$hour = hour(cod$Time)
-
-
-```
-
-## Load env data
-
-```{r}
-
-temp_2013 = read.csv("data/buoy_data_2013.csv", header = TRUE)
-temp_2014 = read.csv("data/buoy_data_2014.csv", header = TRUE)
-temp_2015 = read.csv("data/buoy_data_2015.csv", header = TRUE)
-temp_2019 = read.csv("data/buoy_data_2019.csv", header = TRUE)
-
-# pass vector of dates to lunar.phase to get the lunar phase in radians
+#assign spawning season
+cod$SpawnSeason = case_when(
+  year(cod$DateTime) == 2013 ~ "H_YR1", 
+  year(cod$DateTime) == 2014 & month(cod$DateTime) == 1 | month(cod$DateTime) == 2 ~ "H_YR1",
+  year(cod$DateTime) == 2014 & month(cod$DateTime) == 11 | month(cod$DateTime) == 12 ~ "H_YR2",
+  year(cod$DateTime) == 2015 ~ "H_YR2")
 
 ```
 
@@ -76,15 +58,32 @@ temp_2019 = read.csv("data/buoy_data_2019.csv", header = TRUE)
 
 ```{r}
 gruntperday = cod %>% 
-  group_by(date = date(cod$DateTime)) %>%
+  group_by(SpawnSeason, date = date(cod$DateTime)) %>%
   summarise(n_grunts = n())
 
-ggplot(data = gruntperday, aes(x = date, y = n_grunts))+theme_bw()+
-  geom_col()+ xlab("Date")+ ylab("Number of Grunts")+
-  ggtitle("Atlantic Cod Spawning Season (2013 - 2014)")+
+gruntperday$month = month(gruntperday$date)
+gruntperday$month = factor(gruntperday$month, levels = c("11","12","1"))
+
+gruntperday$day = day(gruntperday$date)
+#gruntperday$monthday = paste(gruntperday$month,gruntperday$day, sep = "_")
+
+# remove non spawning season grunt
+gruntperday = gruntperday[-1,]
+
+#confirm each spawning season has average >5 grunts per day
+confirm_ss = gruntperday %>% 
+  group_by(SpawnSeason, month(date)) %>% 
+  summarise(mean_call = mean(n_grunts))
+
+ggplot(data = gruntperday, aes(x = day, y = n_grunts))+ theme_bw()+
+  geom_col()+
+  facet_grid(rows = vars(SpawnSeason), cols = vars(month))+
+  xlab("Day of the Month")+ ylab("Observed number of grunts")+
+  ggtitle("Seasonal Patterns in Sound Production")+
   theme(axis.title = element_text(size = 14),
         axis.text = element_text(size = 12),
-        title = element_text(size = 14))
+        title = element_text(size = 14), 
+        strip.text = element_text(size = 12))
 
 ```
 
@@ -92,30 +91,50 @@ ggplot(data = gruntperday, aes(x = date, y = n_grunts))+theme_bw()+
 
 ```{r}
 gruntperhr = cod %>%
-  group_by(year = year(cod$DateTime), Month = month(cod$DateTime), date = date(cod$DateTime), 
+  group_by(SpawnSeason = cod$SpawnSeason, year = year(cod$DateTime), month = month(cod$DateTime), date = date(cod$DateTime),
            hour = hour(cod$DateTime)) %>%
   summarise(n_grunts = n()) %>%
-  group_by(year, Month, hour) %>%
+  group_by(SpawnSeason, year, month, hour) %>%
   summarise(avg_hr = mean(n_grunts), stdev = sd(n_grunts))
 
-gruntperhrfilt = gruntperhr[-c(1,2),]
+
+gruntperhrfilt = gruntperhr[-1,]
+gruntperhrfilt$month = factor(gruntperhrfilt$month, levels = c("11","12","1"))
+levels(gruntperhrfilt$month) = c("11",'12','1')
 
 ggplot(data = gruntperhrfilt, aes(x = hour, y = avg_hr))+ theme_bw()+
   geom_col()+
   geom_errorbar(aes(ymin = avg_hr, ymax = avg_hr+stdev, width = 0.2))+
-  facet_grid(rows = vars(year), cols = vars(Month))+
+  facet_grid(rows = vars(SpawnSeason), cols = vars(month))+
   xlab("Hour of the the day")+ ylab("Average number of grunts per hour")+
   ggtitle("Daily Patterns in Sound Production")+
   theme(axis.title = element_text(size = 14),
         axis.text = element_text(size = 12),
-        title = element_text(size = 14))
+        title = element_text(size = 14), 
+        strip.text = element_text(size = 12))
+```
+
+## Load env data
+
+```{r}
+temp_2013 = read.csv("data/buoy_data_2013.csv", header = TRUE)
+temp_2014 = read.csv("data/buoy_data_2014.csv", header = TRUE)
+temp_2015 = read.csv("data/buoy_data_2015.csv", header = TRUE)
+temp_2019 = read.csv("data/buoy_data_2019.csv", header = TRUE)
 
 ```
 
 # Assemble dataframe for model
 
 ```{r}
-DateTime = seq(ymd_hm("2013-11-01 00:00"), ymd_hm("2015-04-01 23:00"), by = "hour")
+DateTime1 = seq(ymd_hm("2013-11-01 00:00"), ymd_hm("2014-01-31 23:00"), by = "hour")
+DateTime = as.data.frame(DateTime1)
+colnames(DateTime) = "DateTime"
+DateTime2 = seq(ymd_hm("2014-11-01 00:00"), ymd_hm("2015-01-31 23:00"), by = "hour")
+DateTime2 = as.data.frame(DateTime2)
+colnames(DateTime2) ="DateTime"
+
+DateTime = rbind(DateTime,DateTime2)
 cod_data = as.data.frame(DateTime)
 
 # cod hourly grunt rate
@@ -137,8 +156,17 @@ cod_data$month = month(cod_data$DateTime)
 cod_data$day = day(cod_data$DateTime)
 cod_data$hour = hour(cod_data$DateTime)
 
+# adding factor for spawning season
+cod_data$SpawnSeason = case_when(
+  year(cod_data$DateTime) == 2013 ~ "H_YR1", 
+  year(cod_data$DateTime) == 2014 & month(cod_data$DateTime) == 1 | month(cod_data$DateTime) == 2 ~ "H_YR1",
+  year(cod_data$DateTime) == 2014 & month(cod_data$DateTime) == 11 | month(cod_data$DateTime) == 12 ~ "H_YR2",
+  year(cod_data$DateTime) == 2015 ~ "H_YR2")
+cod_data$SpawnSeason = factor(cod_data$SpawnSeason)
+
 # lunar data
 cod_data$lunarphase = lunar.phase(cod_data$DateTime)
+cod_data$lunarphaseName = lunar.phase(cod_data$DateTime, name = 4)
 
 # temperature
 #2013
@@ -164,9 +192,71 @@ hour_temp15 = temp_2015 %>%
   filter(DateTime > "2015-01-01" & DateTime < "2015-12-31")
 colnames(temp_2015) = c("YY","MM","DD","hh","mm","WVHT_m","DPD_sec","APD_sec" ,"MWD_degT","WTMP_degC","DateTime")
 
-temp = rbind(temp_2013,temp_2014,temp_2015)
+temp = rbind(hour_temp13,hour_temp14,hour_temp15)
 
 cod_data = left_join(cod_data, temp, by = "DateTime")
+
+```
+
+## Explore patterns between predictors and call presence
+
+```{r}
+
+# plot Mean grunts per hour for each day across spawning season. Single plot for each spawning season
+meanGruntHrDay = cod_data %>%
+  group_by(SpawnSeason, month, day) %>%
+  summarize(meanGrunt = mean(n_grunts))
+
+meanGruntHrDay["month"][meanGruntHrDay["month"] == "1"] = 13
+meanGruntHrDay$monthday = paste(meanGruntHrDay$month, meanGruntHrDay$day, sep = "_")
+
+# average grunts per hour on each day
+# modeled after Zemeckis et al (2019) Fig 6
+# add model predictions to these also
+ggplot(data = meanGruntHrDay, aes(x = monthday, y = meanGrunt))+ theme_bw()+
+  geom_col()+
+  scale_x_discrete(breaks = c("11_1","12_1","13_1"), 
+                   labels = c("Nov", "Dec", "Jan"))+
+  facet_grid(cols = vars(SpawnSeason))
+  
+#uses average calls per hour for each month, stacked bars represent each month/year combo
+ggplot(data=gruntperhrfilt, aes(x=hour,y = avg_hr))+ theme_bw()+
+  geom_col(fill='grey',color='black')+
+  coord_polar()#+
+  #scale_x_continuous("", limits = c(0, 24), 
+  #                   breaks = seq(0, 24), labels = seq(0,24))#+
+  #scale_y_continuous("",limits=c(-2,10))
+
+# counts total number of calls observed at each hour across all months and years
+ggplot(data=cod, aes(x=hour(DateTime)))+ theme_bw()+
+  geom_histogram(fill='grey',color='black', breaks=c(1:24))+
+  coord_polar()+
+  scale_y_continuous(limits = c(-10,80))
+
+ggplot(data=cod_data, aes(x=lunarphase,y = n_grunts))+ theme_bw()+
+  geom_col(fill='grey',color='black')+
+  coord_polar()#+
+
+
+# early plots- not useful
+ggplot(aes(x = lunarphase, y= presence), data = cod_data)+ theme_bw()+
+  geom_jitter()
+
+ggplot(aes(x = WTMP_degC, y= n_grunts), data = cod_data)+ theme_bw()+
+  geom_jitter()
+
+ggplot(aes(x = factor(month), y= n_grunts), data = cod_data)+ theme_bw()+
+  geom_jitter()
+
+ggplot(aes(x = factor(day), y= n_grunts), data = cod_data)+ theme_bw()+
+  geom_jitter()
+
+ggplot(aes(x = DateTime, y = n_grunts), data = cod_data)+theme_bw()+
+  geom_col()
+  
+ggplot(aes(x = DateTime, y = presence), data = cod_data)+theme_bw()+
+  geom_col()+ facet_grid(rows = cod_data$SpawnSeason)
+
 
 ```
 
@@ -175,6 +265,57 @@ Build this off of Micah's analysis
 Actually, use a hurdle model to simultaneously model the binomial presence absence and the rate when present   
 
 ```{r}
+# probably want this in radians, not factor
+simpleMod = lm(n_grunts ~ lunarphaseName, data = cod_data)
+ggplot(simpleMod, aes(x = lunarphaseName, y = n_grunts))+ 
+  geom_point()+
+  geom_line(aes(y = .fitted))
+simpleMod = lm(n_grunts ~ lunarphase, data = cod_data)
+ggplot(simpleMod, aes(x = lunarphase, y = n_grunts))+ 
+  geom_point()+
+  geom_line(aes(y = .fitted))
+
+plot(simpleMod)
+
+
+# Try modeling the presence and rate separately first to understand each one, then can use hurdle model
+
+codMod1 = glm(presence ~  sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + year + WTMP_degC, 
+               data = cod_data, binomial(link = "logit"))
+summary(codMod1) # hour is not actually significant at alpha = 0.05
+drop1(codMod1) # removing hour doesn't change AIC in a distinguishable way
+
+codMod2 = glm(presence ~  sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + WTMP_degC, 
+               data = cod_data, binomial(link = "logit")) 
+summary(codMod2)
+
+codMod3 = glm(presence ~  sin(lunarphase)+ cos(lunarphase) + year + WTMP_degC, 
+               data = cod_data, binomial(link = "logit")) 
+summary(codMod3)
+
+codMod4 = glm(presence ~  sin(lunarphase)+ cos(lunarphase) + SpawnSeason + WTMP_degC, 
+               data = cod_data, binomial(link = "logit")) 
+summary(codMod4)
+
+AIC(codMod1, codMod2, codMod3, codMod4)
+
+# Rate Model
+library(gamlss)
+RateMod1 = glm(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + year + WTMP_degC, 
+               data = cod_data, poisson(link = "log"))
+summary(RateMod1)
+drop1(RateMod1)
+
+RateModNB = glm.nb(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + year, 
+               data = cod_data)
+summary(RateModNB)
+
+# why remove nas in this package only?
+RateModNBII = gamlss(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + year, 
+               data = na.omit(cod_data), family = NBII)
+
+AIC(RateMod1, RateModNB,RateModNBII)
+
 library(pscl)
 
 #trim to bounds of spawning season
