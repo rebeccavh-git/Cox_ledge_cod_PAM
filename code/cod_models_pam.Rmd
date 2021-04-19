@@ -1,0 +1,134 @@
+---
+title: "Rebecca Van Hoeck"
+author: "Becca Van Hoeck"
+date: "4/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Script to build models and evaluate model fit to identify environmental drivers of atlantic cod vocalizations
+
+Load data - all data wrangling and exploratory visualizations were done in historical_cod_data.RMD
+```{r}
+
+# Observed data
+cod = read.csv('data/cod_calls_04-5-21.csv', header = TRUE)
+
+# remove any data not from channel 9
+cod[cod$Channel != 9,] = NA
+cod = na.omit(cod)
+
+# paste date and time into a single lubridate datetime
+cod$DateTime = paste(cod$BeginDate, cod$BeginClockTime, sep = " ") 
+cod$DateTime = ymd_hms(cod$DateTime, tz = "EST") 
+
+#assign spawning season
+cod$SpawnSeason = case_when(
+  year(cod$DateTime) == 2013 ~ "H_YR1", 
+  year(cod$DateTime) == 2014 & month(cod$DateTime) == 1 | month(cod$DateTime) == 2 ~ "H_YR1",
+  year(cod$DateTime) == 2014 & month(cod$DateTime) == 11 | month(cod$DateTime) == 12 ~ "H_YR2",
+  year(cod$DateTime) == 2015 ~ "H_YR2")
+
+# lunar phase for visulization of observed data
+cod$lunarphase = lunar.phase(cod$DateTime)
+
+
+## Tidy data with grunt presence, rate, and associated environmental variables
+# note that there are many times missing temperatures. Possibly not able to use this variable because grunt data is so sparse. I don't want to remove some cod data just to have complete cases with temperature
+cod_data = read.csv("data/cod_data_04-19-21.csv", header = TRUE)
+
+
+
+```
+
+# Model cod vocalization presence
+Build this off of Micah's analysis
+Actually, use a hurdle model to simultaneously model the binomial presence absence and the rate when present   
+
+```{r}
+# Try modeling the presence and rate separately first to understand each one, then can use hurdle model
+codMod1 = glm(presence ~  sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
+               data = cod_data, binomial(link = "logit")) 
+summary(codMod1)
+drop1(codMod1)
+
+# remove diel cycle (hour)
+codMod2 = glm(presence ~  sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
+               data = cod_data, binomial(link = "logit")) 
+summary(codMod2)
+
+# remove temperature
+codMod3 = glm(presence ~  sin(lunarphase)+ cos(lunarphase) + SpawnSeason,
+               data = cod_data, binomial(link = "logit")) 
+summary(codMod3)
+
+AIC(codMod1, codMod2, codMod3)
+
+# remove missing data and add predictions to dataframe
+cod_dataCC = na.omit(cod_data)
+cod_dataCC$predicted = predict(codMod2)
+
+
+plot(cod_dataCC$DateTime, cod_dataCC$predicted)
+```
+
+## Model Grunt Rate
+
+```{r}
+# Rate Model
+library(gamlss)
+# Full model - need to add semi-lunar cycle
+RateMod1 = glm(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
+               data = cod_data, poisson(link = "log"))
+summary(RateMod1)
+drop1(RateMod1)
+
+# same model but negative binomial
+RateModNB = glm.nb(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
+               data = cod_data)
+summary(RateModNB)
+
+# same model, but quadratic error term on negative binomial
+# why remove nas in this package only?
+RateModNBII = gamlss(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
+               data = na.omit(cod_data), family = NBII)
+summary(RateModNBII)
+
+AIC(RateMod1, RateModNB, RateModNBII, RateModNBII_2)
+
+# Neg binomial with quadratic, but removed diel cycle. 
+RateModNBII_2 = gamlss(n_grunts ~ sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
+               data = na.omit(cod_data), family = NBII)
+
+AIC(RateModNBII, RateModNBII_2)
+
+ratePredict = predict(RateModNBII)
+
+plot(ratePredict)
+```
+
+## Hurdle model
+
+```{r}
+library(pscl)
+
+# #trim to bounds of spawning season
+# cod_data = cod_data %>% 
+#   filter(DateTime > "2013-11-17")
+# 
+# cod_hurdle1 = hurdle(n_grunts ~ month + day + 
+#                        sin(hour) + cos(hour) + 
+#                        sin(lunarphase) + cos(lunarphase) + 
+#                        month:sin(lunarphase) + month:cos(lunarphase),
+#                      data = cod_data, dist = "poisson", zero.dist = "binomial")
+# 
+# summary(cod_hurdle1)
+
+
+
+
+```
+
