@@ -7,6 +7,11 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(lunar)
+library(dplyr)
+library(tidyr)
+
 ```
 
 ## Script to build models and evaluate model fit to identify environmental drivers of atlantic cod vocalizations
@@ -14,33 +19,47 @@ knitr::opts_chunk$set(echo = TRUE)
 Load data - all data wrangling and exploratory visualizations were done in historical_cod_data.RMD
 ```{r}
 
-# Observed data
-cod = read.csv('data/cod_calls_04-5-21.csv', header = TRUE)
-
-# remove any data not from channel 9
-cod[cod$Channel != 9,] = NA
-cod = na.omit(cod)
-
-# paste date and time into a single lubridate datetime
-cod$DateTime = paste(cod$BeginDate, cod$BeginClockTime, sep = " ") 
-cod$DateTime = ymd_hms(cod$DateTime, tz = "EST") 
-
-#assign spawning season
-cod$SpawnSeason = case_when(
-  year(cod$DateTime) == 2013 ~ "H_YR1", 
-  year(cod$DateTime) == 2014 & month(cod$DateTime) == 1 | month(cod$DateTime) == 2 ~ "H_YR1",
-  year(cod$DateTime) == 2014 & month(cod$DateTime) == 11 | month(cod$DateTime) == 12 ~ "H_YR2",
-  year(cod$DateTime) == 2015 ~ "H_YR2")
-
-# lunar phase for visulization of observed data
-cod$lunarphase = lunar.phase(cod$DateTime)
-
-
 ## Tidy data with grunt presence, rate, and associated environmental variables
 # note that there are many times missing temperatures. Possibly not able to use this variable because grunt data is so sparse. I don't want to remove some cod data just to have complete cases with temperature
-cod_data = read.csv("data/cod_data_04-19-21.csv", header = TRUE)
+cod_data = read.csv("data/cod_data_05-26-21.csv")
 
+# identify julian day
+yearDay = yday(cod_data$DateTime)
+yearWeek = week(cod_data$DateTime)
 
+cod_data = cod_data %>%
+  mutate(region = "CoxLedge", site = "COX01", siteY = paste(site,year, sep = "_"),
+           julian = paste(year, yearDay, sep = "_"), week = paste(year, yearWeek, sep = "_"))
+cod_data = cod_data[,-1] # remove row index
+
+# Mass Bay Data
+load('data/gsub.rdat')
+
+gsub = gsub %>%
+  mutate(region = "MassBay")
+
+# Remake Mass Bay Dataset to match Cox Ledge Dataframe
+MassBayCod = data.frame(gsub$Date)
+colnames(MassBayCod) = "DateTime"
+MassBayCod$n_grunts = gsub$GPH
+MassBayCod$presence = case_when(gsub$GPH == 0 ~ 0,
+                                gsub$GPH > 0 ~ 1)
+MassBayCod$year = year(MassBayCod$Date)
+MassBayCod$month = month(MassBayCod$Date)
+MassBayCod$day = day(MassBayCod$Date)
+MassBayCod$hour = gsub$H
+MassBayCod$lunarphase = gsub$MOON
+MassBayCod$lunar4 = gsub$MOON4
+MassBayCod$lunar8 = gsub$MOON8
+MassBayCod$SpawnSeason = (NaN);
+MassBayCod$avg_TempC = (NaN);
+MassBayCod$region = gsub$region
+MassBayCod$site = gsub$Site
+MassBayCod$siteY = gsub$SiteY
+MassBayCod$julian = gsub$DAY
+MassBayCod$week = gsub$WK
+
+cod = rbind(cod_data, MassBayCod)
 
 ```
 

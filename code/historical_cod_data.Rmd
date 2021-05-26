@@ -55,6 +55,10 @@ cod$SpawnSeason = case_when(
 # lunar phase for visulization of observed data
 cod$lunarphase = lunar.phase(cod$DateTime)
 
+# Mass Bay Data
+
+load('data/gsub.rdat')
+
 
 ```
 
@@ -163,8 +167,9 @@ cod_data$hour = hour(cod_data$DateTime)
 
 # lunar data
 cod_data$lunarphase = lunar.phase(cod_data$DateTime, shift = 0)
-cod_data$lunarphaseName = lunar.phase(cod_data$DateTime, name = 4)
-cod_data$semilunar = lunar.phase(cod_data$DateTime)
+cod_data$lunar4 = lunar.phase(cod_data$DateTime, name = 4)
+cod_data$lunar8 = lunar.phase(cod_data$DateTime, name = 8)
+#cod_data$semilunar = lunar.phase(cod_data$DateTime)
 
 #cod_data$lunarphase2 = round(cod_data$lunarphase, digits = 1)
 
@@ -204,7 +209,7 @@ temp = rbind(hour_temp13,hour_temp14,hour_temp15)
 
 cod_data = left_join(cod_data, temp, by = "DateTime")
 
-#write.csv(cod_data, "data/cod_data_04-19-21.csv")
+#write.csv(cod_data, "data/cod_data_05-26-21.csv")
 
 ```
 
