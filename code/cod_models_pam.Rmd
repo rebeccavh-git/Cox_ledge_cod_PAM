@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(lunar)
 library(dplyr)
 library(tidyr)
+library(lubridate)
 
 ```
 
@@ -34,6 +35,8 @@ cod_data = cod_data[,-1] # remove row index
 
 # Mass Bay Data
 load('data/gsub.rdat')
+# this dataframe includes every hour for days that grunts were detected? 
+
 
 gsub = gsub %>%
   mutate(region = "MassBay")
@@ -60,6 +63,17 @@ MassBayCod$julian = gsub$DAY
 MassBayCod$week = gsub$WK
 
 cod = rbind(cod_data, MassBayCod)
+
+```
+
+# Presence with Cox Ledge and Mass Bay Data
+
+```{r}
+# did not converge
+cod_mod1 = glm(presence ~ site + region +  sin(hour) + cos(hour) + sin(lunarphase) + cos(lunarphase) + 
+                 lunar8 + year + siteY, data = cod, binomial(link = "logit"))
+summary(cod_mod1)
+
 
 ```
 
