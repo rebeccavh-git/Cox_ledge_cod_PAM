@@ -22,49 +22,23 @@ Load data - all data wrangling and exploratory visualizations were done in histo
 
 ## Tidy data with grunt presence, rate, and associated environmental variables
 # note that there are many times missing temperatures. Possibly not able to use this variable because grunt data is so sparse. I don't want to remove some cod data just to have complete cases with temperature
-cod_data = read.csv("data/cod_data_05-26-21.csv")
-
-# identify julian day
-yearDay = yday(cod_data$DateTime)
-yearWeek = week(cod_data$DateTime)
-
-cod_data = cod_data %>%
-  mutate(region = "CoxLedge", site = "COX01", siteY = paste(site,year, sep = "_"),
-           julian = paste(year, yearDay, sep = "_"), week = paste(year, yearWeek, sep = "_"))
+cod_data = read.csv("data/cod_allregions07-21.csv", header = TRUE)
 cod_data = cod_data[,-1] # remove row index
 
-# Mass Bay Data
-load('data/gsub.rdat')
-# this dataframe includes every hour for days that grunts were detected? 
+```
+
+## Creating sin and cos variables for natural cycles
+
+```{r}
+
+hoursin = sin(2*pi*(cod_data$hour/24))
+
+Lsin = sin(gsub$MOON)
 
 
-gsub = gsub %>%
-  mutate(region = "MassBay")
-
-# Remake Mass Bay Dataset to match Cox Ledge Dataframe
-MassBayCod = data.frame(gsub$Date)
-colnames(MassBayCod) = "DateTime"
-MassBayCod$n_grunts = gsub$GPH
-MassBayCod$presence = case_when(gsub$GPH == 0 ~ 0,
-                                gsub$GPH > 0 ~ 1)
-MassBayCod$year = year(MassBayCod$Date)
-MassBayCod$month = month(MassBayCod$Date)
-MassBayCod$day = day(MassBayCod$Date)
-MassBayCod$hour = gsub$H
-MassBayCod$lunarphase = gsub$MOON
-MassBayCod$lunar4 = gsub$MOON4
-MassBayCod$lunar8 = gsub$MOON8
-MassBayCod$SpawnSeason = (NaN);
-MassBayCod$avg_TempC = (NaN);
-MassBayCod$region = gsub$region
-MassBayCod$site = gsub$Site
-MassBayCod$siteY = gsub$SiteY
-MassBayCod$julian = gsub$DAY
-MassBayCod$week = gsub$WK
-
-cod = rbind(cod_data, MassBayCod)
 
 ```
+
 
 # Presence with Cox Ledge and Mass Bay Data
 

@@ -20,19 +20,7 @@ library(lunar)
 library(tidyr)
 ```
 
-## Test R code to load detections
-
-```{r}
-#sels_1308 = list.files(path = "C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated", 
-#            pattern = "^[Ch9_RVH]$")
-# 
-# sels_1308 = list.files(path = "C:/Users/Becca/Documents/MATLAB/ISRAT_Projects/BRP_MA-RI_201308/raven_format/validated", 
-#            pattern = "[m]")
-
-
-```
-
-## Load Data
+## Load Cox Ledge Data
 
 ```{r}
 cod = read.csv('data/cod_calls_04-5-21.csv', header = TRUE)
@@ -55,14 +43,11 @@ cod$SpawnSeason = case_when(
 # lunar phase for visulization of observed data
 cod$lunarphase = lunar.phase(cod$DateTime)
 
-# Mass Bay Data
-
-load('data/gsub.rdat')
-
-
 ```
 
 ## Seasonal Patterns
+
+Cox Ledge 2013 & 2014 spawning season pass minimum grunt criteria
 
 ```{r}
 gruntperday = cod %>% 
@@ -79,9 +64,25 @@ gruntperday$day = day(gruntperday$date)
 gruntperday = gruntperday[-1,]
 
 #confirm each spawning season has average >5 grunts per day
-confirm_ss = gruntperday %>% 
+gruntperday %>% 
   group_by(SpawnSeason, month(date)) %>% 
   summarise(mean_call = mean(n_grunts))
+
+# each spawning season has grunts on >10 days
+confirm_ndays = gruntperday %>%
+  group_by(SpawnSeason) %>%
+  summarise(ndays = n())
+
+# confirm each spawning season has grunts on >2% of hours
+SS_min_hours = ((30+31+31)*24)*0.02 # ndays included* hours/day*2%
+hrs_w_grunt = cod %>%
+  group_by(SpawnSeason = cod$SpawnSeason, year = year(cod$DateTime), month = month(cod$DateTime), date = date(cod$DateTime),
+           hour = hour(cod$DateTime)) %>%
+  summarise(n_grunts = n()) %>%
+  group_by(SpawnSeason) %>%
+  summarise(n_hours = n())
+
+hrs_w_grunt > SS_min_hours
 
 ggplot(data = gruntperday, aes(x = day, y = n_grunts))+ theme_bw()+
   geom_col()+
@@ -208,8 +209,102 @@ colnames(temp_2015) = c("YY","MM","DD","hh","mm","WVHT_m","DPD_sec","APD_sec" ,"
 temp = rbind(hour_temp13,hour_temp14,hour_temp15)
 
 cod_data = left_join(cod_data, temp, by = "DateTime")
-
 #write.csv(cod_data, "data/cod_data_05-26-21.csv")
+
+
+```
+
+## Final dataframe prep
+
+```{r}
+
+# identify julian day
+yearDay = yday(cod_data$DateTime)
+yearWeek = week(cod_data$DateTime)
+
+cod_data = cod_data %>%
+  mutate(region = "CoxLedge", site = "COX01", siteY = paste(site,year, sep = "_"),
+           julian = paste(year, yearDay, sep = "_"), week = paste(year, yearWeek, sep = "_"))
+
+#write.csv(cod_data, "data/cod_data_07-21.csv")
+
+
+```
+
+## Mass Bay Data
+
+```{r}
+
+load('data/gsub.rdat')
+# this dataframe includes every hour for days that grunts were detected? 
+
+gsub = gsub %>%
+  mutate(region = "MassBay")
+
+# Remake Mass Bay Dataset to match Cox Ledge Dataframe
+MassBayCod = data.frame(gsub$Date)
+colnames(MassBayCod) = "DateTime"
+MassBayCod$n_grunts = gsub$GPH
+MassBayCod$presence = case_when(gsub$GPH == 0 ~ 0,
+                                gsub$GPH > 0 ~ 1)
+MassBayCod$year = year(MassBayCod$Date)
+MassBayCod$month = month(MassBayCod$Date)
+MassBayCod$day = day(MassBayCod$Date)
+MassBayCod$hour = gsub$H
+MassBayCod$lunarphase = gsub$MOON
+MassBayCod$lunar4 = gsub$MOON4
+MassBayCod$lunar8 = gsub$MOON8
+MassBayCod$SpawnSeason = (NaN);
+MassBayCod$avg_TempC = (NaN);
+MassBayCod$region = gsub$region
+MassBayCod$site = gsub$Site
+MassBayCod$siteY = gsub$SiteY
+MassBayCod$julian = gsub$DAY
+MassBayCod$week = gsub$WK
+
+# filter to only years that we have Cox Ledge Data
+MassBayCod13_14 = MassBayCod %>%
+  filter(year == 2013 | year == 2014)
+
+MassBayCod13_14$SpawnSeason = case_when(MassBayCod13_14$year == 2013 ~ "H_YR1", 
+                                        MassBayCod13_14$year == 2014 ~ "H_YR2")
+
+```
+
+## Confirm vocalizations were present >10 days per year, or >2% hours overall
+
+All sites and year pass this threshold
+
+```{r}
+
+# each spawning season has grunts on >10 days
+confirm_ndays = MassBayCod13_14 %>%
+  group_by(site, year, month, day) %>%
+  summarize(n_grunts = sum(n_grunts)) %>%
+  group_by(site, year) %>%
+  summarize(ndays = n())
+  
+# confirm each spawning season has grunts on >2% of hours
+SS_min_hours = ((31+31+31)*24)*0.02 # ndays included* hours/day*2%
+hrs_w_grunt = MassBayCod13_14 %>%
+  group_by(site, year, month, day, hour) %>%
+  summarise(n_grunts = n()) %>%
+  group_by(site,year) %>%
+  summarise(n_hours = n())
+
+hrs_w_grunt$n_hours > SS_min_hours
+
+
+```
+
+## Make final dataframe for model
+
+```{r}
+
+cod_all = rbind(cod_data, MassBayCod13_14)
+
+#write.csv(cod_all, "data/cod_allregions07-21.csv")
+
 
 ```
 

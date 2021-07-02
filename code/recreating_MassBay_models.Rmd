@@ -143,7 +143,7 @@ Y + S + H + L1 + L2 + J + rW + S:J
 Y + S + H + L1 + J + rW + S:J
 
 ```{r}
-
+# this was taking forever to run, when i cancelled it threw warnings
 rateBest = glmmTMB(GPH ~ Year + Site + Hsin + Hcos + Msin + Mcos + Lsin + Lcos + Jsin + Jcos + (1|WK) + Site:J,
                    zi = ~ Year + Site+  + Hsin + Hcos + Msin + Mcos + Jsin + Jcos + (1|WK) + Site:J,
                    family = nbinom1, data = codMB)
