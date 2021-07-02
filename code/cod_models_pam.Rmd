@@ -31,9 +31,9 @@ cod_data = cod_data[,-1] # remove row index
 
 ```{r}
 
-hoursin = sin(2*pi*(cod_data$hour/24))
+hoursin = sin(2*pi*(cod_data$hour/24)) # this matches
 
-Lsin = sin(gsub$MOON)
+Lsin = sin(gsub$MOON) # this doesn't match their dataframe
 
 
 
