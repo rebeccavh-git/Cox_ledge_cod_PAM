@@ -23,6 +23,7 @@ Load data - all data wrangling and exploratory visualizations were done in histo
 
 ## Tidy data with grunt presence, rate, and associated environmental variables
 # note that there are many times missing temperatures. Possibly not able to use this variable because grunt data is so sparse. I don't want to remove some cod data just to have complete cases with temperature
+
 cod_data = read.csv("data/cod_allregions07-21.csv", header = TRUE)
 cod_data = cod_data[,-1] # remove row index
 
