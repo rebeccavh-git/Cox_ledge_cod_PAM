@@ -12,6 +12,7 @@ library(lunar)
 library(dplyr)
 library(tidyr)
 library(lubridate)
+library(ggplot2)
 
 ```
 
@@ -31,55 +32,84 @@ cod_data = cod_data[,-1] # remove row index
 
 ```{r}
 
-hoursin = sin(2*pi*(cod_data$hour/24)) # this matches
+# Hour of the day
+cod_data$shour = sin(2*pi*(cod_data$hour/24)) # this matches
+cod_data$chour = cos(2*pi*(cod_data$hour/24)) 
 
-Lsin = sin(gsub$MOON) # this doesn't match their dataframe
+# Julian Day
+cod_data$sday = sin(2*pi*(cod_data$J/365))
+cod_data$cday = cos(2*pi*(cod_data$J/365))
+  
+# Lunar cycle  
+cod_data$sLunar = sin(cod_data$lunarphase) 
+cod_data$cLunar = cos(cod_data$lunarphase)
 
+#Semi lunar cycle
+# unsure how to calculate, asked colleague
+
+  
+
+```
+
+# Mixture and hurdle models
+Caiger et al 2020 (MEPS) Global Model: Ten years of data from Mass Bay
+
+presence or rate ~ year + site + hour + depth + lunar + semiLunar + JulianDay + S:Julian Day + random(week)
+
+- hour, lunar, semilunar, julian day were all cyclical
+- random effect of week was to account for serial autocorrelation
+- Used model averaged predictions, weighted by AIC, with all models with deltaAIC <5. 
+
+Presence model: Top 4 models averaged. All included Y, S, H, D, J, rW, S:J. One included L1, one omitted all Lunar, one included both L1 & L2, one included only L1. 
+
+Rate model: model evaluated predictors for the rate zero-inf terms separately. Two models were averaged, rate terms were the same and included: Y, S, H, L1, L2, J, rW, S:J. Zero inflated were the same as rate, except one model excluded L2. 
+
+```{r}
+# following ENEC563 Lab 15 for Mixture and Hurdle Models
+
+# starting with the global model
+# does not include region yet, because of singularity with site
+# also does not include random effect of week. 
+
+library(pscl)
+zip1 = zeroinfl(n_grunts ~ SpawnSeason + site + shour + chour + sLunar + cLunar + sday + cday + site:J |
+                  SpawnSeason + site + shour + chour + sLunar + cLunar + sday + cday + site:J, 
+                dist = "poisson", link = "logit", data = cod_data)
+summary(zip1)
+
+#this was computationally singular? 
+Nb1 = zeroinfl(n_grunts ~ SpawnSeason + site + shour + chour + sLunar + cLunar + sday + cday + site:J |
+                  SpawnSeason + site + shour + chour + sLunar + cLunar + sday + cday + site:J, 
+                dist = "negbin", link = "logit", data = cod_data)
+summary(Nb1)
+
+# but the likelihood is much higher for the Neg Bin that only gave coefficient estimates
+library(lmtest)
+lrtest(zip1, Nb1)
 
 
 ```
 
+# Modeling presence and rate separately
 
 # Presence with Cox Ledge and Mass Bay Data
 
 ```{r}
-# did not converge
-cod_mod1 = glm(presence ~ site + region +  sin(hour) + cos(hour) + sin(lunarphase) + cos(lunarphase) + 
-                 lunar8 + year + siteY, data = cod, binomial(link = "logit"))
-summary(cod_mod1)
+# singularity for region when site is included
+codMod = glm(presence ~ SpawnSeason + site + region + shour + chour + sLunar + cLunar,
+                 data = cod_data, family = binomial(link = "logit"))
+summary(codMod)
 
+codMod_nosite = glm(presence ~ SpawnSeason + region + shour + chour + sLunar + cLunar,
+                 data = cod_data, family = binomial(link = "logit"))
+summary(codMod_nosite)
+drop1(codMod_nosite)
+cod_data$P_resid = residuals(codMod_nosite, type = "pearson")
+cod_data$d_resid = residuals(codMod_nosite, type = "deviance")
 
-```
+sum(cod_data$P_resid)/df.residual(codMod_nosite)
+# does this mean that there is a significant difference in presence, or significant difference in covariates?
 
-# Model cod vocalization presence
-Build this off of Micah's analysis
-Actually, use a hurdle model to simultaneously model the binomial presence absence and the rate when present   
-
-```{r}
-# Try modeling the presence and rate separately first to understand each one, then can use hurdle model
-codMod1 = glm(presence ~  sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
-               data = cod_data, binomial(link = "logit")) 
-summary(codMod1)
-drop1(codMod1)
-
-# remove diel cycle (hour)
-codMod2 = glm(presence ~  sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
-               data = cod_data, binomial(link = "logit")) 
-summary(codMod2)
-
-# remove temperature
-codMod3 = glm(presence ~  sin(lunarphase)+ cos(lunarphase) + SpawnSeason,
-               data = cod_data, binomial(link = "logit")) 
-summary(codMod3)
-
-AIC(codMod1, codMod2, codMod3)
-
-# remove missing data and add predictions to dataframe
-cod_dataCC = na.omit(cod_data)
-cod_dataCC$predicted = predict(codMod2)
-
-
-plot(cod_dataCC$DateTime, cod_dataCC$predicted)
 ```
 
 ## Model Grunt Rate
@@ -88,54 +118,25 @@ plot(cod_dataCC$DateTime, cod_dataCC$predicted)
 # Rate Model
 library(gamlss)
 # Full model - need to add semi-lunar cycle
-RateMod1 = glm(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
+RateMod1 = glm(n_grunts ~ SpawnSeason + region + shour + chour + sLunar + cLunar, 
                data = cod_data, poisson(link = "log"))
 summary(RateMod1)
-drop1(RateMod1)
 
 # same model but negative binomial
-RateModNB = glm.nb(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
-               data = cod_data)
+RateModNB = glm.nb(n_grunts ~ SpawnSeason + region + shour + chour + sLunar + cLunar, data = cod_data)
 summary(RateModNB)
 
 # same model, but quadratic error term on negative binomial
 # why remove nas in this package only?
-RateModNBII = gamlss(n_grunts ~ sin(hour) + cos(hour) + sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
-               data = na.omit(cod_data), family = NBII)
-summary(RateModNBII)
+# RateModNBII = gamlss(n_grunts ~ SpawnSeason + region + shour + chour + sLunar + cLunar,
+#                      data = na.omit(cod_data), family = NBII)
+# summary(RateModNBII)
 
-AIC(RateMod1, RateModNB, RateModNBII, RateModNBII_2)
-
-# Neg binomial with quadratic, but removed diel cycle. 
-RateModNBII_2 = gamlss(n_grunts ~ sin(lunarphase)+ cos(lunarphase) + SpawnSeason + avg_TempC, 
-               data = na.omit(cod_data), family = NBII)
-
-AIC(RateModNBII, RateModNBII_2)
-
-ratePredict = predict(RateModNBII)
-
-plot(ratePredict)
-```
-
-## Hurdle model
-
-```{r}
-library(pscl)
-
-# #trim to bounds of spawning season
-# cod_data = cod_data %>% 
-#   filter(DateTime > "2013-11-17")
-# 
-# cod_hurdle1 = hurdle(n_grunts ~ month + day + 
-#                        sin(hour) + cos(hour) + 
-#                        sin(lunarphase) + cos(lunarphase) + 
-#                        month:sin(lunarphase) + month:cos(lunarphase),
-#                      data = cod_data, dist = "poisson", zero.dist = "binomial")
-# 
-# summary(cod_hurdle1)
+#AIC(RateMod1, RateModNB, RateModNBII, RateModNBII_2)
 
 
+#ratePredict = predict(RateModNBII)
 
-
+#plot(ratePredict)
 ```
 

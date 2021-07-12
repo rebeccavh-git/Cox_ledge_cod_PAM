@@ -222,11 +222,12 @@ cod_data = left_join(cod_data, temp, by = "DateTime")
 yearDay = yday(cod_data$DateTime)
 yearWeek = week(cod_data$DateTime)
 
-cod_data = cod_data %>%
-  mutate(region = "CoxLedge", site = "COX01", siteY = paste(site,year, sep = "_"),
-           julian = paste(year, yearDay, sep = "_"), week = paste(year, yearWeek, sep = "_"))
 
-#write.csv(cod_data, "data/cod_data_07-21.csv")
+cod_data = cod_data %>%
+  mutate(region = "CoxLedge", site = "COX01", siteY = paste(site,year, sep = "_"), J = yearDay,
+           yearDay = paste(year, yearDay, sep = "_"), wk = yearWeek, yearweek = paste(year, yearWeek, sep = "_"))
+
+#write.csv(cod_data, "data/cod_data_07-9-21.csv")
 
 
 ```
@@ -240,6 +241,12 @@ load('data/gsub.rdat')
 
 gsub = gsub %>%
   mutate(region = "MassBay")
+
+#SLtest = as.data.frame(gsub$MOON*2)
+#SLtest$slunar = gsub$MOON2
+#SLtest$slunar2 = (2*pi*(gsub$MOON/8))
+#test = isTRUE(SLtest-gsub$MOON2 == 0)
+
 
 # Remake Mass Bay Dataset to match Cox Ledge Dataframe
 MassBayCod = data.frame(gsub$Date)
@@ -259,8 +266,10 @@ MassBayCod$avg_TempC = (NaN);
 MassBayCod$region = gsub$region
 MassBayCod$site = gsub$Site
 MassBayCod$siteY = gsub$SiteY
-MassBayCod$julian = gsub$DAY
-MassBayCod$week = gsub$WK
+MassBayCod$J = gsub$J
+MassBayCod$yearDay = gsub$DAY
+MassBayCod$wk = gsub$W
+MassBayCod$yearweek = gsub$WK
 
 # filter to only years that we have Cox Ledge Data
 MassBayCod13_14 = MassBayCod %>%
